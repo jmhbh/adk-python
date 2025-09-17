@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 from typing import TYPE_CHECKING
 
@@ -103,66 +104,127 @@ class AgentTool(BaseTool):
       args: dict[str, Any],
       tool_context: ToolContext,
   ) -> Any:
-    from ..agents.llm_agent import LlmAgent
-    from ..runners import Runner
-    from ..sessions.in_memory_session_service import InMemorySessionService
+    logger = logging.getLogger(__name__)
+    agent_name = getattr(self.agent, 'name', 'unknown_agent')
+    
+    logger.error(f"[AgentTool.run_async] Starting execution for agent: {agent_name}")
+    logger.error(f"[AgentTool.run_async] Args received: {args}")
+    logger.error(f"[AgentTool.run_async] Skip summarization: {self.skip_summarization}")
+    
+    try:
+      from ..agents.llm_agent import LlmAgent
+      from ..runners import Runner
+      from ..sessions.in_memory_session_service import InMemorySessionService
+      
+      logger.error(f"[AgentTool.run_async] Imports successful for agent: {agent_name}")
 
-    if self.skip_summarization:
-      tool_context.actions.skip_summarization = True
+      if self.skip_summarization:
+        logger.error(f"[AgentTool.run_async] Setting skip_summarization=True for agent: {agent_name}")
+        tool_context.actions.skip_summarization = True
 
-    if isinstance(self.agent, LlmAgent) and self.agent.input_schema:
-      input_value = self.agent.input_schema.model_validate(args)
-      content = types.Content(
-          role='user',
-          parts=[
-              types.Part.from_text(
-                  text=input_value.model_dump_json(exclude_none=True)
-              )
-          ],
-      )
-    else:
-      content = types.Content(
-          role='user',
-          parts=[types.Part.from_text(text=args['request'])],
-      )
-    runner = Runner(
-        app_name=self.agent.name,
-        agent=self.agent,
-        artifact_service=ForwardingArtifactService(tool_context),
-        session_service=InMemorySessionService(),
-        memory_service=InMemoryMemoryService(),
-        credential_service=tool_context._invocation_context.credential_service,
-        plugins=list(tool_context._invocation_context.plugin_manager.plugins),
-    )
-    session = await runner.session_service.create_session(
-        app_name=self.agent.name,
-        user_id=tool_context._invocation_context.user_id,
-        state=tool_context.state.to_dict(),
-    )
-
-    last_content = None
-    async with Aclosing(
-        runner.run_async(
-            user_id=session.user_id, session_id=session.id, new_message=content
+      logger.error(f"[AgentTool.run_async] Processing input for agent: {agent_name}")
+      if isinstance(self.agent, LlmAgent) and self.agent.input_schema:
+        logger.error(f"[AgentTool.run_async] Using structured input schema for agent: {agent_name}")
+        input_value = self.agent.input_schema.model_validate(args)
+        content = types.Content(
+            role='user',
+            parts=[
+                types.Part.from_text(
+                    text=input_value.model_dump_json(exclude_none=True)
+                )
+            ],
         )
-    ) as agen:
-      async for event in agen:
-        # Forward state delta to parent session.
-        if event.actions.state_delta:
-          tool_context.state.update(event.actions.state_delta)
-        if event.content:
-          last_content = event.content
+        logger.error(f"[AgentTool.run_async] Structured content created for agent: {agent_name}")
+      else:
+        logger.error(f"[AgentTool.run_async] Using simple text input for agent: {agent_name}")
+        content = types.Content(
+            role='user',
+            parts=[types.Part.from_text(text=args['request'])],
+        )
+        logger.error(f"[AgentTool.run_async] Simple content created for agent: {agent_name}")
+      
+      logger.error(f"[AgentTool.run_async] Creating Runner for agent: {agent_name}")
+      runner = Runner(
+          app_name=self.agent.name,
+          agent=self.agent,
+          artifact_service=ForwardingArtifactService(tool_context),
+          session_service=InMemorySessionService(),
+          memory_service=InMemoryMemoryService(),
+          credential_service=tool_context._invocation_context.credential_service,
+          plugins=list(tool_context._invocation_context.plugin_manager.plugins),
+      )
+      logger.error(f"[AgentTool.run_async] Runner created successfully for agent: {agent_name}")
+      
+      logger.error(f"[AgentTool.run_async] Creating session for agent: {agent_name}")
+      session = await runner.session_service.create_session(
+          app_name=self.agent.name,
+          user_id=tool_context._invocation_context.user_id,
+          state=tool_context.state.to_dict(),
+      )
+      logger.error(f"[AgentTool.run_async] Session created successfully for agent: {agent_name}, session_id: {session.id}")
 
-    if not last_content:
-      return ''
-    merged_text = '\n'.join(p.text for p in last_content.parts if p.text)
-    if isinstance(self.agent, LlmAgent) and self.agent.output_schema:
-      tool_result = self.agent.output_schema.model_validate_json(
-          merged_text
-      ).model_dump(exclude_none=True)
-    else:
-      tool_result = merged_text
-    return tool_result
+      last_content = None
+      logger.error(f"[AgentTool.run_async] Starting agent execution for agent: {agent_name}")
+      logger.error(f"[AgentTool.run_async] User ID: {session.user_id}, Session ID: {session.id}")
+      
+      async with Aclosing(
+          runner.run_async(
+              user_id=session.user_id, session_id=session.id, new_message=content
+          )
+      ) as agen:
+        logger.error(f"[AgentTool.run_async] Agent execution context acquired for agent: {agent_name}")
+        event_count = 0
+        
+        try:
+          async for event in agen:
+            event_count += 1
+            logger.error(f"[AgentTool.run_async] Processing event #{event_count} for agent: {agent_name}")
+            
+            # Forward state delta to parent session.
+            if event.actions.state_delta:
+              logger.error(f"[AgentTool.run_async] Updating state delta for agent: {agent_name}")
+              tool_context.state.update(event.actions.state_delta)
+            if event.content:
+              logger.error(f"[AgentTool.run_async] Capturing content for agent: {agent_name}")
+              last_content = event.content
+              
+            # Log every 10 events to avoid spam but track progress
+            if event_count % 10 == 0:
+              logger.error(f"[AgentTool.run_async] Processed {event_count} events for agent: {agent_name}")
+              
+        except Exception as e:
+          logger.error(f"[AgentTool.run_async] Exception during event processing for agent: {agent_name}: {e}")
+          logger.error(f"[AgentTool.run_async] Processed {event_count} events before error for agent: {agent_name}")
+          raise
+          
+        logger.error(f"[AgentTool.run_async] Agent execution completed for agent: {agent_name}, processed {event_count} events")
+
+      logger.error(f"[AgentTool.run_async] Processing final result for agent: {agent_name}")
+      if not last_content:
+        logger.error(f"[AgentTool.run_async] No content received from agent: {agent_name}")
+        return ''
+        
+      merged_text = '\n'.join(p.text for p in last_content.parts if p.text)
+      logger.error(f"[AgentTool.run_async] Merged text length: {len(merged_text)} for agent: {agent_name}")
+      
+      if isinstance(self.agent, LlmAgent) and self.agent.output_schema:
+        logger.error(f"[AgentTool.run_async] Using structured output schema for agent: {agent_name}")
+        tool_result = self.agent.output_schema.model_validate_json(
+            merged_text
+        ).model_dump(exclude_none=True)
+        logger.error(f"[AgentTool.run_async] Structured output created for agent: {agent_name}")
+      else:
+        logger.error(f"[AgentTool.run_async] Using text output for agent: {agent_name}")
+        tool_result = merged_text
+        
+      logger.error(f"[AgentTool.run_async] Execution completed successfully for agent: {agent_name}")
+      return tool_result
+      
+    except Exception as e:
+      logger.error(f"[AgentTool.run_async] Critical error in run_async for agent: {agent_name}: {e}")
+      logger.error(f"[AgentTool.run_async] Error type: {type(e).__name__}")
+      logger.error(f"[AgentTool.run_async] Args that caused error: {args}")
+      raise
 
   @override
   @classmethod
