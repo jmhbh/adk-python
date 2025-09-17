@@ -61,11 +61,11 @@ from .mcp_tool import MCPTool
 logger = logging.getLogger("google_adk." + __name__)
 
 
-async def _list_tools_with_retry(session, max_retries: int = 3, timeout_seconds: float = 5.0):
-  """Retry list_tools with timeout and exponential backoff.
+async def _list_tools_with_retry(session_manager, max_retries: int = 3, timeout_seconds: float = 5.0):
+  """Retry list_tools with timeout, exponential backoff, and fresh sessions.
   
   Args:
-    session: The MCP ClientSession to call list_tools on
+    session_manager: The MCPSessionManager to create fresh sessions
     max_retries: Maximum number of retry attempts
     timeout_seconds: Timeout for each individual attempt
     
@@ -79,8 +79,12 @@ async def _list_tools_with_retry(session, max_retries: int = 3, timeout_seconds:
   last_exception = None
   
   for attempt in range(max_retries + 1):  # +1 for initial attempt
+    session = None
     try:
-      logger.error(f"[MCPToolset._list_tools_with_retry] Attempt {attempt + 1}/{max_retries + 1} with {timeout_seconds}s timeout")
+      logger.error(f"[MCPToolset._list_tools_with_retry] Attempt {attempt + 1}/{max_retries + 1} - Creating fresh session")
+      session = await session_manager.create_session()
+      logger.error(f"[MCPToolset._list_tools_with_retry] Fresh session created, calling list_tools with {timeout_seconds}s timeout")
+      
       result = await asyncio.wait_for(
           session.list_tools(), 
           timeout=timeout_seconds
@@ -90,18 +94,25 @@ async def _list_tools_with_retry(session, max_retries: int = 3, timeout_seconds:
     except asyncio.TimeoutError as e:
       last_exception = e
       logger.error(f"[MCPToolset._list_tools_with_retry] Timeout on attempt {attempt + 1}/{max_retries + 1}")
-      if attempt < max_retries:
-        # Exponential backoff: 1s, 2s, 4s
-        wait_time = 2 ** attempt
-        logger.error(f"[MCPToolset._list_tools_with_retry] Waiting {wait_time}s before retry")
-        await asyncio.sleep(wait_time)
     except Exception as e:
       last_exception = e
       logger.error(f"[MCPToolset._list_tools_with_retry] Error on attempt {attempt + 1}/{max_retries + 1}: {e}")
-      if attempt < max_retries:
-        wait_time = 2 ** attempt
-        logger.error(f"[MCPToolset._list_tools_with_retry] Waiting {wait_time}s before retry")
-        await asyncio.sleep(wait_time)
+    finally:
+      # Clean up the session if it was created
+      if session is not None:
+        try:
+          # Close the session to free resources
+          await session_manager.close()
+          logger.error(f"[MCPToolset._list_tools_with_retry] Closed session after attempt {attempt + 1}")
+        except Exception as cleanup_error:
+          logger.warning(f"[MCPToolset._list_tools_with_retry] Error during session cleanup: {cleanup_error}")
+    
+    # Wait before retry (except on last attempt)
+    if attempt < max_retries:
+      # Exponential backoff: 1s, 2s, 4s
+      wait_time = 2 ** attempt
+      logger.error(f"[MCPToolset._list_tools_with_retry] Waiting {wait_time}s before retry")
+      await asyncio.sleep(wait_time)
   
   # All retries failed
   logger.error(f"[MCPToolset._list_tools_with_retry] All {max_retries + 1} attempts failed")
@@ -206,14 +217,9 @@ class McpToolset(BaseToolset):
     logger.error(f"[MCPToolset.get_tools] Tool filter: {self.tool_filter}")
     logger.error(f"[MCPToolset.get_tools] Tool name prefix: {self.tool_name_prefix}")
     
-    # Get session from session manager
-    logger.error(f"[MCPToolset.get_tools] About to create MCP session")
-    session = await self._mcp_session_manager.create_session()
-    logger.error(f"[MCPToolset.get_tools] Successfully created MCP session: {type(session).__name__}")
-
-    # Fetch available tools from the MCP server with retry logic
-    logger.error(f"[MCPToolset.get_tools] About to call session.list_tools()")
-    tools_response: ListToolsResult = await _list_tools_with_retry(session)
+    # Fetch available tools from the MCP server with retry logic and fresh sessions
+    logger.error(f"[MCPToolset.get_tools] About to call session.list_tools() with retry logic")
+    tools_response: ListToolsResult = await _list_tools_with_retry(self._mcp_session_manager)
     logger.error(f"[MCPToolset.get_tools] Successfully got tools response with {len(tools_response.tools)} tools")
 
     # Apply filtering based on context and tool_filter
