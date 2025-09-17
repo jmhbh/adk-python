@@ -692,24 +692,29 @@ class BaseLlmFlow(ABC):
     else:
       logger.error(f"[BaseLlmFlow._postprocess_handle_function_calls_async] No function response event received for agent: {invocation_context.agent.name}")
     logger.error(f"[BaseLlmFlow._postprocess_handle_function_calls_async] Completed function call handling for agent: {invocation_context.agent.name}")
-      if json_response := _output_schema_processor.get_structured_model_response(
-          function_response_event
-      ):
-        # Create and yield a final model response event
-        final_event = (
-            _output_schema_processor.create_final_model_response_event(
-                invocation_context, json_response
-            )
-        )
-        yield final_event
-      transfer_to_agent = function_response_event.actions.transfer_to_agent
-      if transfer_to_agent:
-        agent_to_run = self._get_agent_to_run(
-            invocation_context, transfer_to_agent
-        )
-        async with Aclosing(agent_to_run.run_async(invocation_context)) as agen:
-          async for event in agen:
-            yield event
+    
+    # Always yield the function response event first
+    yield function_response_event
+
+    # Check if this is a set_model_response function response
+    if json_response := _output_schema_processor.get_structured_model_response(
+        function_response_event
+    ):
+      # Create and yield a final model response event
+      final_event = (
+          _output_schema_processor.create_final_model_response_event(
+              invocation_context, json_response
+          )
+      )
+      yield final_event
+    transfer_to_agent = function_response_event.actions.transfer_to_agent
+    if transfer_to_agent:
+      agent_to_run = self._get_agent_to_run(
+          invocation_context, transfer_to_agent
+      )
+      async with Aclosing(agent_to_run.run_async(invocation_context)) as agen:
+        async for event in agen:
+          yield event
 
   def _get_agent_to_run(
       self, invocation_context: InvocationContext, agent_name: str
