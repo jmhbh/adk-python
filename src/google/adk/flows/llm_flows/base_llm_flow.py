@@ -349,34 +349,50 @@ class BaseLlmFlow(ABC):
       self, invocation_context: InvocationContext
   ) -> AsyncGenerator[Event, None]:
     """Runs the flow."""
+    logger.error(f"[BaseLlmFlow.run_async] Starting flow for agent: {invocation_context.agent.name}")
+    step_count = 0
     while True:
+      step_count += 1
+      logger.error(f"[BaseLlmFlow.run_async] Starting step {step_count} for agent: {invocation_context.agent.name}")
       last_event = None
       async with Aclosing(self._run_one_step_async(invocation_context)) as agen:
+        logger.error(f"[BaseLlmFlow.run_async] Entered _run_one_step_async for step {step_count}, agent: {invocation_context.agent.name}")
         async for event in agen:
           last_event = event
+          logger.error(f"[BaseLlmFlow.run_async] Yielding event from step {step_count}, agent: {invocation_context.agent.name}")
           yield event
+        logger.error(f"[BaseLlmFlow.run_async] Completed _run_one_step_async for step {step_count}, agent: {invocation_context.agent.name}")
+      logger.error(f"[BaseLlmFlow.run_async] Exited _run_one_step_async for step {step_count}, agent: {invocation_context.agent.name}")
       if not last_event or last_event.is_final_response() or last_event.partial:
         if last_event and last_event.partial:
           logger.warning('The last event is partial, which is not expected.')
+        logger.error(f"[BaseLlmFlow.run_async] Breaking loop after step {step_count}, agent: {invocation_context.agent.name}")
         break
+    logger.error(f"[BaseLlmFlow.run_async] Completed flow after {step_count} steps, agent: {invocation_context.agent.name}")
 
   async def _run_one_step_async(
       self,
       invocation_context: InvocationContext,
   ) -> AsyncGenerator[Event, None]:
     """One step means one LLM call."""
+    logger.error(f"[BaseLlmFlow._run_one_step_async] Starting one step for agent: {invocation_context.agent.name}")
     llm_request = LlmRequest()
 
     # Preprocess before calling the LLM.
+    logger.error(f"[BaseLlmFlow._run_one_step_async] Starting preprocess for agent: {invocation_context.agent.name}")
     async with Aclosing(
         self._preprocess_async(invocation_context, llm_request)
     ) as agen:
       async for event in agen:
+        logger.error(f"[BaseLlmFlow._run_one_step_async] Yielding preprocess event for agent: {invocation_context.agent.name}")
         yield event
+    logger.error(f"[BaseLlmFlow._run_one_step_async] Completed preprocess for agent: {invocation_context.agent.name}")
     if invocation_context.end_invocation:
+      logger.error(f"[BaseLlmFlow._run_one_step_async] End invocation set, returning for agent: {invocation_context.agent.name}")
       return
 
     # Calls the LLM.
+    logger.error(f"[BaseLlmFlow._run_one_step_async] Starting LLM call for agent: {invocation_context.agent.name}")
     model_response_event = Event(
         id=Event.new_id(),
         invocation_id=invocation_context.invocation_id,
@@ -388,8 +404,11 @@ class BaseLlmFlow(ABC):
             invocation_context, llm_request, model_response_event
         )
     ) as agen:
+      logger.error(f"[BaseLlmFlow._run_one_step_async] Entered LLM call for agent: {invocation_context.agent.name}")
       async for llm_response in agen:
+        logger.error(f"[BaseLlmFlow._run_one_step_async] Received LLM response for agent: {invocation_context.agent.name}")
         # Postprocess after calling the LLM.
+        logger.error(f"[BaseLlmFlow._run_one_step_async] Starting postprocess for agent: {invocation_context.agent.name}")
         async with Aclosing(
             self._postprocess_async(
                 invocation_context,
@@ -402,45 +421,65 @@ class BaseLlmFlow(ABC):
             # Update the mutable event id to avoid conflict
             model_response_event.id = Event.new_id()
             model_response_event.timestamp = datetime.datetime.now().timestamp()
+            logger.error(f"[BaseLlmFlow._run_one_step_async] Yielding postprocess event for agent: {invocation_context.agent.name}")
             yield event
+        logger.error(f"[BaseLlmFlow._run_one_step_async] Completed postprocess for agent: {invocation_context.agent.name}")
+      logger.error(f"[BaseLlmFlow._run_one_step_async] Completed LLM call for agent: {invocation_context.agent.name}")
+    logger.error(f"[BaseLlmFlow._run_one_step_async] Completed one step for agent: {invocation_context.agent.name}")
 
   async def _preprocess_async(
       self, invocation_context: InvocationContext, llm_request: LlmRequest
   ) -> AsyncGenerator[Event, None]:
     from ...agents.llm_agent import LlmAgent
 
+    logger.error(f"[BaseLlmFlow._preprocess_async] Starting preprocess for agent: {invocation_context.agent.name}")
     agent = invocation_context.agent
     if not isinstance(agent, LlmAgent):
+      logger.error(f"[BaseLlmFlow._preprocess_async] Agent is not LlmAgent, skipping preprocess for: {invocation_context.agent.name}")
       return
 
     # Runs processors.
-    for processor in self.request_processors:
+    logger.error(f"[BaseLlmFlow._preprocess_async] Processing {len(self.request_processors)} request processors for agent: {invocation_context.agent.name}")
+    for i, processor in enumerate(self.request_processors):
+      logger.error(f"[BaseLlmFlow._preprocess_async] Processing request processor {i+1}/{len(self.request_processors)} for agent: {invocation_context.agent.name}")
       async with Aclosing(
           processor.run_async(invocation_context, llm_request)
       ) as agen:
         async for event in agen:
+          logger.error(f"[BaseLlmFlow._preprocess_async] Yielding event from request processor {i+1} for agent: {invocation_context.agent.name}")
           yield event
+      logger.error(f"[BaseLlmFlow._preprocess_async] Completed request processor {i+1}/{len(self.request_processors)} for agent: {invocation_context.agent.name}")
 
     # Run processors for tools.
-    for tool_union in agent.tools:
+    logger.error(f"[BaseLlmFlow._preprocess_async] Processing {len(agent.tools)} tools for agent: {invocation_context.agent.name}")
+    for i, tool_union in enumerate(agent.tools):
+      logger.error(f"[BaseLlmFlow._preprocess_async] Processing tool {i+1}/{len(agent.tools)} for agent: {invocation_context.agent.name}")
       tool_context = ToolContext(invocation_context)
 
       # If it's a toolset, process it first
       if isinstance(tool_union, BaseToolset):
+        logger.error(f"[BaseLlmFlow._preprocess_async] Processing toolset for tool {i+1} for agent: {invocation_context.agent.name}")
         await tool_union.process_llm_request(
             tool_context=tool_context, llm_request=llm_request
         )
+        logger.error(f"[BaseLlmFlow._preprocess_async] Completed toolset processing for tool {i+1} for agent: {invocation_context.agent.name}")
 
       from ...agents.llm_agent import _convert_tool_union_to_tools
 
       # Then process all tools from this tool union
+      logger.error(f"[BaseLlmFlow._preprocess_async] Converting tool union to tools for tool {i+1} for agent: {invocation_context.agent.name}")
       tools = await _convert_tool_union_to_tools(
           tool_union, ReadonlyContext(invocation_context)
       )
-      for tool in tools:
+      logger.error(f"[BaseLlmFlow._preprocess_async] Converted to {len(tools)} tools for tool {i+1} for agent: {invocation_context.agent.name}")
+      for j, tool in enumerate(tools):
+        logger.error(f"[BaseLlmFlow._preprocess_async] Processing tool {j+1}/{len(tools)} from tool union {i+1} for agent: {invocation_context.agent.name}")
         await tool.process_llm_request(
             tool_context=tool_context, llm_request=llm_request
         )
+        logger.error(f"[BaseLlmFlow._preprocess_async] Completed tool {j+1}/{len(tools)} from tool union {i+1} for agent: {invocation_context.agent.name}")
+      logger.error(f"[BaseLlmFlow._preprocess_async] Completed tool union {i+1}/{len(agent.tools)} for agent: {invocation_context.agent.name}")
+    logger.error(f"[BaseLlmFlow._preprocess_async] Completed preprocess for agent: {invocation_context.agent.name}")
 
   async def _postprocess_async(
       self,
@@ -460,13 +499,17 @@ class BaseLlmFlow(ABC):
     Yields:
       A generator of events.
     """
+    logger.error(f"[BaseLlmFlow._postprocess_async] Starting postprocess for agent: {invocation_context.agent.name}")
 
     # Runs processors.
+    logger.error(f"[BaseLlmFlow._postprocess_async] Running postprocess processors for agent: {invocation_context.agent.name}")
     async with Aclosing(
         self._postprocess_run_processors_async(invocation_context, llm_response)
     ) as agen:
       async for event in agen:
+        logger.error(f"[BaseLlmFlow._postprocess_async] Yielding event from postprocess processors for agent: {invocation_context.agent.name}")
         yield event
+    logger.error(f"[BaseLlmFlow._postprocess_async] Completed postprocess processors for agent: {invocation_context.agent.name}")
 
     # Skip the model response event if there is no content and no error code.
     # This is needed for the code executor to trigger another loop.
@@ -475,23 +518,32 @@ class BaseLlmFlow(ABC):
         and not llm_response.error_code
         and not llm_response.interrupted
     ):
+      logger.error(f"[BaseLlmFlow._postprocess_async] Skipping model response event (no content/error/interrupted) for agent: {invocation_context.agent.name}")
       return
 
     # Builds the event.
+    logger.error(f"[BaseLlmFlow._postprocess_async] Finalizing model response event for agent: {invocation_context.agent.name}")
     model_response_event = self._finalize_model_response_event(
         llm_request, llm_response, model_response_event
     )
+    logger.error(f"[BaseLlmFlow._postprocess_async] Yielding model response event for agent: {invocation_context.agent.name}")
     yield model_response_event
 
     # Handles function calls.
-    if model_response_event.get_function_calls():
+    function_calls = model_response_event.get_function_calls()
+    logger.error(f"[BaseLlmFlow._postprocess_async] Found {len(function_calls) if function_calls else 0} function calls for agent: {invocation_context.agent.name}")
+    if function_calls:
+      logger.error(f"[BaseLlmFlow._postprocess_async] Handling function calls for agent: {invocation_context.agent.name}")
       async with Aclosing(
           self._postprocess_handle_function_calls_async(
               invocation_context, model_response_event, llm_request
           )
       ) as agen:
         async for event in agen:
+          logger.error(f"[BaseLlmFlow._postprocess_async] Yielding event from function call handling for agent: {invocation_context.agent.name}")
           yield event
+      logger.error(f"[BaseLlmFlow._postprocess_async] Completed function call handling for agent: {invocation_context.agent.name}")
+    logger.error(f"[BaseLlmFlow._postprocess_async] Completed postprocess for agent: {invocation_context.agent.name}")
 
   async def _postprocess_live(
       self,
@@ -613,25 +665,33 @@ class BaseLlmFlow(ABC):
       function_call_event: Event,
       llm_request: LlmRequest,
   ) -> AsyncGenerator[Event, None]:
+    logger.error(f"[BaseLlmFlow._postprocess_handle_function_calls_async] Starting function call handling for agent: {invocation_context.agent.name}")
+    logger.error(f"[BaseLlmFlow._postprocess_handle_function_calls_async] Tools dict has {len(llm_request.tools_dict) if llm_request.tools_dict else 0} tools for agent: {invocation_context.agent.name}")
+    
+    logger.error(f"[BaseLlmFlow._postprocess_handle_function_calls_async] Calling functions.handle_function_calls_async for agent: {invocation_context.agent.name}")
     if function_response_event := await functions.handle_function_calls_async(
         invocation_context, function_call_event, llm_request.tools_dict
     ):
+      logger.error(f"[BaseLlmFlow._postprocess_handle_function_calls_async] Received function response event for agent: {invocation_context.agent.name}")
+      
+      logger.error(f"[BaseLlmFlow._postprocess_handle_function_calls_async] Generating auth event for agent: {invocation_context.agent.name}")
       auth_event = functions.generate_auth_event(
           invocation_context, function_response_event
       )
       if auth_event:
+        logger.error(f"[BaseLlmFlow._postprocess_handle_function_calls_async] Yielding auth event for agent: {invocation_context.agent.name}")
         yield auth_event
 
+      logger.error(f"[BaseLlmFlow._postprocess_handle_function_calls_async] Generating tool confirmation event for agent: {invocation_context.agent.name}")
       tool_confirmation_event = functions.generate_request_confirmation_event(
           invocation_context, function_call_event, function_response_event
       )
       if tool_confirmation_event:
+        logger.error(f"[BaseLlmFlow._postprocess_handle_function_calls_async] Yielding tool confirmation event for agent: {invocation_context.agent.name}")
         yield tool_confirmation_event
-
-      # Always yield the function response event first
-      yield function_response_event
-
-      # Check if this is a set_model_response function response
+    else:
+      logger.error(f"[BaseLlmFlow._postprocess_handle_function_calls_async] No function response event received for agent: {invocation_context.agent.name}")
+    logger.error(f"[BaseLlmFlow._postprocess_handle_function_calls_async] Completed function call handling for agent: {invocation_context.agent.name}")
       if json_response := _output_schema_processor.get_structured_model_response(
           function_response_event
       ):
