@@ -468,6 +468,7 @@ class BaseLlmFlow(ABC):
 
       # Then process all tools from this tool union
       logger.error(f"[BaseLlmFlow._preprocess_async] Converting tool union to tools for tool {i+1} for agent: {invocation_context.agent.name}")
+      logger.error(f"[BaseLlmFlow._preprocess_async] Tool union: {tool_union}")
       tools = await _convert_tool_union_to_tools(
           tool_union, ReadonlyContext(invocation_context)
       )
