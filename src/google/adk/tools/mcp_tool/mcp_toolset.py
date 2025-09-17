@@ -153,7 +153,7 @@ class McpToolset(BaseToolset):
         List[BaseTool]: A list of tools available under the specified context.
     """
     logger.error(f"[MCPToolset.get_tools] Starting get_tools")
-    logger.error(f"[MCPToolset.get_tools] Connection params: {self.connection_params}")
+    logger.error(f"[MCPToolset.get_tools] Connection params: {self._connection_params}")
     logger.error(f"[MCPToolset.get_tools] Auth scheme: {self._auth_scheme}")
     logger.error(f"[MCPToolset.get_tools] Tool filter: {self.tool_filter}")
     logger.error(f"[MCPToolset.get_tools] Tool name prefix: {self.tool_name_prefix}")
@@ -161,7 +161,7 @@ class McpToolset(BaseToolset):
     # Get session from session manager
     logger.error(f"[MCPToolset.get_tools] About to create MCP session")
     session = await self._mcp_session_manager.create_session()
-    logger.error(f"[MCPToolset.get_tools] Successfully created MCP session: {session}")
+    logger.error(f"[MCPToolset.get_tools] Successfully created MCP session: {type(session).__name__}")
 
     # Fetch available tools from the MCP server
     logger.error(f"[MCPToolset.get_tools] About to call session.list_tools()")

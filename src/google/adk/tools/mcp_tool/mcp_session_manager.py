@@ -358,7 +358,7 @@ class MCPSessionManager:
       try:
         logger.error(f"[MCPSessionManager.create_session] Creating MCP client")
         client = self._create_client(merged_headers)
-        logger.error(f"[MCPSessionManager.create_session] Created MCP client: {client}")
+        logger.error(f"[MCPSessionManager.create_session] Created MCP client: {type(client).__name__}")
 
         logger.error(f"[MCPSessionManager.create_session] Entering async context for client")
         transports = await exit_stack.enter_async_context(client)
