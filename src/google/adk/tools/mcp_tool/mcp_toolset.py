@@ -152,24 +152,42 @@ class McpToolset(BaseToolset):
     Returns:
         List[BaseTool]: A list of tools available under the specified context.
     """
+    logger.error(f"[MCPToolset.get_tools] Starting get_tools")
+    logger.error(f"[MCPToolset.get_tools] Connection params: {self.connection_params}")
+    logger.error(f"[MCPToolset.get_tools] Auth scheme: {self._auth_scheme}")
+    logger.error(f"[MCPToolset.get_tools] Tool filter: {self.tool_filter}")
+    logger.error(f"[MCPToolset.get_tools] Tool name prefix: {self.tool_name_prefix}")
+    
     # Get session from session manager
+    logger.error(f"[MCPToolset.get_tools] About to create MCP session")
     session = await self._mcp_session_manager.create_session()
+    logger.error(f"[MCPToolset.get_tools] Successfully created MCP session: {session}")
 
     # Fetch available tools from the MCP server
+    logger.error(f"[MCPToolset.get_tools] About to call session.list_tools()")
     tools_response: ListToolsResult = await session.list_tools()
+    logger.error(f"[MCPToolset.get_tools] Successfully got tools response with {len(tools_response.tools)} tools")
 
     # Apply filtering based on context and tool_filter
+    logger.error(f"[MCPToolset.get_tools] Starting tool filtering and MCPTool creation")
     tools = []
-    for tool in tools_response.tools:
+    for i, tool in enumerate(tools_response.tools):
+      logger.error(f"[MCPToolset.get_tools] Processing tool {i+1}/{len(tools_response.tools)}: {tool.name}")
       mcp_tool = MCPTool(
           mcp_tool=tool,
           mcp_session_manager=self._mcp_session_manager,
           auth_scheme=self._auth_scheme,
           auth_credential=self._auth_credential,
       )
+      logger.error(f"[MCPToolset.get_tools] Created MCPTool for {tool.name}")
 
       if self._is_tool_selected(mcp_tool, readonly_context):
+        logger.error(f"[MCPToolset.get_tools] Tool {tool.name} selected by filter")
         tools.append(mcp_tool)
+      else:
+        logger.error(f"[MCPToolset.get_tools] Tool {tool.name} filtered out")
+    
+    logger.error(f"[MCPToolset.get_tools] Returning {len(tools)} filtered tools")
     return tools
 
   async def close(self) -> None:

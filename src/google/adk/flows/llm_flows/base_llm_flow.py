@@ -468,11 +468,26 @@ class BaseLlmFlow(ABC):
 
       # Then process all tools from this tool union
       logger.error(f"[BaseLlmFlow._preprocess_async] Converting tool union to tools for tool {i+1} for agent: {invocation_context.agent.name}")
+      logger.error(f"[BaseLlmFlow._preprocess_async] Tool union type: {type(tool_union).__name__}")
       logger.error(f"[BaseLlmFlow._preprocess_async] Tool union: {tool_union}")
+      
+      # Add specific logging for MCP toolset
+      if hasattr(tool_union, '__class__') and 'MCPToolset' in tool_union.__class__.__name__:
+        logger.error(f"[BaseLlmFlow._preprocess_async] MCP Toolset details for tool {i+1}:")
+        logger.error(f"[BaseLlmFlow._preprocess_async] - Connection params: {getattr(tool_union, 'connection_params', 'N/A')}")
+        logger.error(f"[BaseLlmFlow._preprocess_async] - Auth scheme: {getattr(tool_union, '_auth_scheme', 'N/A')}")
+        logger.error(f"[BaseLlmFlow._preprocess_async] - Tool filter: {getattr(tool_union, 'tool_filter', 'N/A')}")
+        logger.error(f"[BaseLlmFlow._preprocess_async] - Tool name prefix: {getattr(tool_union, 'tool_name_prefix', 'N/A')}")
+        if hasattr(tool_union, '_mcp_session_manager'):
+          logger.error(f"[BaseLlmFlow._preprocess_async] - MCP Session Manager: {tool_union._mcp_session_manager}")
+        else:
+          logger.error(f"[BaseLlmFlow._preprocess_async] - MCP Session Manager: Not initialized")
+      
+      logger.error(f"[BaseLlmFlow._preprocess_async] About to call _convert_tool_union_to_tools for tool {i+1}")
       tools = await _convert_tool_union_to_tools(
           tool_union, ReadonlyContext(invocation_context)
       )
-      logger.error(f"[BaseLlmFlow._preprocess_async] Converted to {len(tools)} tools for tool {i+1} for agent: {invocation_context.agent.name}")
+      logger.error(f"[BaseLlmFlow._preprocess_async] Successfully converted to {len(tools)} tools for tool {i+1} for agent: {invocation_context.agent.name}")
       for j, tool in enumerate(tools):
         logger.error(f"[BaseLlmFlow._preprocess_async] Processing tool {j+1}/{len(tools)} from tool union {i+1} for agent: {invocation_context.agent.name}")
         await tool.process_llm_request(

@@ -112,13 +112,36 @@ ToolUnion: TypeAlias = Union[Callable, BaseTool, BaseToolset]
 async def _convert_tool_union_to_tools(
     tool_union: ToolUnion, ctx: ReadonlyContext
 ) -> list[BaseTool]:
+  logger.error(f"[_convert_tool_union_to_tools] Starting conversion for tool_union type: {type(tool_union).__name__}")
+  
   if isinstance(tool_union, BaseTool):
+    logger.error(f"[_convert_tool_union_to_tools] Tool union is BaseTool, returning single tool")
     return [tool_union]
   if callable(tool_union):
+    logger.error(f"[_convert_tool_union_to_tools] Tool union is callable, creating FunctionTool")
     return [FunctionTool(func=tool_union)]
 
   # At this point, tool_union must be a BaseToolset
-  return await tool_union.get_tools_with_prefix(ctx)
+  logger.error(f"[_convert_tool_union_to_tools] Tool union is BaseToolset, calling get_tools_with_prefix")
+  logger.error(f"[_convert_tool_union_to_tools] Toolset class: {tool_union.__class__.__name__}")
+  
+  # Add specific logging for MCP toolset
+  if hasattr(tool_union, '__class__') and 'MCPToolset' in tool_union.__class__.__name__:
+    logger.error(f"[_convert_tool_union_to_tools] MCP Toolset detected, logging details:")
+    logger.error(f"[_convert_tool_union_to_tools] - Connection params: {getattr(tool_union, 'connection_params', 'N/A')}")
+    logger.error(f"[_convert_tool_union_to_tools] - Auth scheme: {getattr(tool_union, '_auth_scheme', 'N/A')}")
+    logger.error(f"[_convert_tool_union_to_tools] - Tool filter: {getattr(tool_union, 'tool_filter', 'N/A')}")
+    logger.error(f"[_convert_tool_union_to_tools] - Tool name prefix: {getattr(tool_union, 'tool_name_prefix', 'N/A')}")
+    if hasattr(tool_union, '_mcp_session_manager'):
+      logger.error(f"[_convert_tool_union_to_tools] - MCP Session Manager: {tool_union._mcp_session_manager}")
+      logger.error(f"[_convert_tool_union_to_tools] - MCP Session Manager type: {type(tool_union._mcp_session_manager).__name__}")
+    else:
+      logger.error(f"[_convert_tool_union_to_tools] - MCP Session Manager: Not initialized")
+  
+  logger.error(f"[_convert_tool_union_to_tools] About to call get_tools_with_prefix on {tool_union.__class__.__name__}")
+  tools = await tool_union.get_tools_with_prefix(ctx)
+  logger.error(f"[_convert_tool_union_to_tools] Successfully got {len(tools)} tools from {tool_union.__class__.__name__}")
+  return tools
 
 
 class LlmAgent(BaseAgent):

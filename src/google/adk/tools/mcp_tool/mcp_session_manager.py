@@ -311,24 +311,38 @@ class MCPSessionManager:
     Returns:
         ClientSession: The initialized MCP client session.
     """
+    logger.error(f"[MCPSessionManager.create_session] Starting session creation")
+    logger.error(f"[MCPSessionManager.create_session] Connection params: {self._connection_params}")
+    logger.error(f"[MCPSessionManager.create_session] Headers: {headers}")
+    
     # Merge headers once at the beginning
+    logger.error(f"[MCPSessionManager.create_session] Merging headers")
     merged_headers = self._merge_headers(headers)
+    logger.error(f"[MCPSessionManager.create_session] Merged headers: {merged_headers}")
 
     # Generate session key using merged headers
+    logger.error(f"[MCPSessionManager.create_session] Generating session key")
     session_key = self._generate_session_key(merged_headers)
+    logger.error(f"[MCPSessionManager.create_session] Session key: {session_key}")
 
     # Use async lock to prevent race conditions
+    logger.error(f"[MCPSessionManager.create_session] Acquiring session lock")
     async with self._session_lock:
+      logger.error(f"[MCPSessionManager.create_session] Acquired session lock")
       # Check if we have an existing session
       if session_key in self._sessions:
+        logger.error(f"[MCPSessionManager.create_session] Found existing session for key: {session_key}")
         session, exit_stack = self._sessions[session_key]
 
         # Check if the existing session is still connected
+        logger.error(f"[MCPSessionManager.create_session] Checking if existing session is disconnected")
         if not self._is_session_disconnected(session):
           # Session is still good, return it
+          logger.error(f"[MCPSessionManager.create_session] Existing session is still connected, returning it")
           return session
         else:
           # Session is disconnected, clean it up
+          logger.error(f"[MCPSessionManager.create_session] Existing session is disconnected, cleaning up")
           logger.info('Cleaning up disconnected session: %s', session_key)
           try:
             await exit_stack.aclose()
@@ -338,15 +352,22 @@ class MCPSessionManager:
             del self._sessions[session_key]
 
       # Create a new session (either first time or replacing disconnected one)
+      logger.error(f"[MCPSessionManager.create_session] Creating new session")
       exit_stack = AsyncExitStack()
 
       try:
+        logger.error(f"[MCPSessionManager.create_session] Creating MCP client")
         client = self._create_client(merged_headers)
+        logger.error(f"[MCPSessionManager.create_session] Created MCP client: {client}")
 
+        logger.error(f"[MCPSessionManager.create_session] Entering async context for client")
         transports = await exit_stack.enter_async_context(client)
+        logger.error(f"[MCPSessionManager.create_session] Got transports: {len(transports)} transport(s)")
+        
         # The streamable http client returns a GetSessionCallback in addition to the read/write MemoryObjectStreams
         # needed to build the ClientSession, we limit then to the two first values to be compatible with all clients.
         if isinstance(self._connection_params, StdioConnectionParams):
+          logger.error(f"[MCPSessionManager.create_session] Creating Stdio ClientSession with timeout: {self._connection_params.timeout}")
           session = await exit_stack.enter_async_context(
               ClientSession(
                   *transports[:2],
@@ -356,17 +377,23 @@ class MCPSessionManager:
               )
           )
         else:
+          logger.error(f"[MCPSessionManager.create_session] Creating ClientSession without timeout")
           session = await exit_stack.enter_async_context(
               ClientSession(*transports[:2])
           )
+        logger.error(f"[MCPSessionManager.create_session] Created ClientSession, initializing...")
         await session.initialize()
+        logger.error(f"[MCPSessionManager.create_session] ClientSession initialized successfully")
 
         # Store session and exit stack in the pool
         self._sessions[session_key] = (session, exit_stack)
+        logger.error(f"[MCPSessionManager.create_session] Stored session in pool with key: {session_key}")
         logger.debug('Created new session: %s', session_key)
         return session
 
-      except Exception:
+      except Exception as e:
+        logger.error(f"[MCPSessionManager.create_session] Exception during session creation: {e}")
+        logger.error(f"[MCPSessionManager.create_session] Exception type: {type(e).__name__}")
         # If session creation fails, clean up the exit stack
         if exit_stack:
           await exit_stack.aclose()
